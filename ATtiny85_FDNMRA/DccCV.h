@@ -1,8 +1,9 @@
 //--------------------------------------------------------------------------------
 //
-// ATtiny85 LED ファンクションデコーダスケッチ NMRA認証
-// Copyright(C)'2025 Ayanosuke(Maison de DCC) / Desktop Station
+// SMFDEasy_AYA071 LED ファンクションデコーダスケッチ NMRA認証
+// Copyright(C)'2021 Ayanosuke(Maison de DCC)
 // [DccCV.h]
+// AYA071-2
 //
 // PIN_F0_F 0      // Atiny85 PB0(5pin)O7 analogwrite head light
 // PIN_F0_R 1      // Atiny85 PB1(6pin)O6 analogwrite tail light

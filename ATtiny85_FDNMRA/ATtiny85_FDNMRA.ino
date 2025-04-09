@@ -1,9 +1,9 @@
 //--------------------------------------------------------------------------------
-//
-// ATtiny85 LED ファンクションデコーダスケッチ NMRA認証
+// ATtiny85_FDNMRA LED ファンクションデコーダスケッチ NMRA認証
 // Copyright(C)'2025 Ayanosuke(Maison de DCC) / Desktop Station
 // [ATtiny85_FDNMRA.ino]
 //
+// AYA062-2用
 // PIN_AUX1 1      // Atiny85 PB1(6pin)V6[pad3] analogwrite AUX1 light F1
 // PIN_AUX2 4      // Atiny85 PB4(3pin)V5[pad2] analogwrite AUX2
 // PIN_F0_F 0      // Atiny85 PB0(5pin)V8[pad7] analogwrite head light F0
@@ -14,7 +14,6 @@
 // PIN_F0_R 1      // Atiny85 PB1(6pin)O6 analogwrite tail light F1
 // PIN_AUX2 3      // Atint85 PB3(2pin)O3             sign light F3
 // PIN_AUX1 4      // Atiny85 PB4(3pin)O2 analogwrite room light F5
-
 //
 // http://maison-dcc.sblo.jp/ http://dcc.client.jp/ http://ayabu.blog.shinobi.jp/
 // https://twitter.com/masashi_214
@@ -42,6 +41,10 @@
 // F0 で　On/Off ヘッドランプは自動切り替え
 //
 // 2021/08/11 CV29 bit1 によるFrd／Rev処理追加
+// 2021/08/13 前進時急行灯をOn/offする機能追加
+// 2021/08/15 565行目CV29 前進後進入替フラグ追加
+// 2021/08/18 CV49=2〜13 でもCV29の処理、テールライトの処理、急行灯の処理追加
+// 2025/04/09 AYA062_FDNMRAcustV3.ino をベースに作成
 //--------------------------------------------------------------------------------
 
 // O1:F3 でON/OFF head sign
@@ -57,9 +60,6 @@
 
 bool doing_Resets_Flag = false;  // True if we are simulating reset packets.
 #define RESETDBG false
-
-
-
 
 //使用クラスの宣言
 NmraDcc	 Dcc;
@@ -143,14 +143,7 @@ void resetCVToDefault()
   }
 };
 
-
-
 extern void	   notifyCVChange( uint16_t CV, uint8_t Value) {
-  //CVが変更されたときのメッセージ
-  //Serial.print("CV ");
-  //Serial.print(CV);
-  //Serial.print(" Changed to ");
-  //Serial.println(Value, DEC);
 };
 
 //------------------------------------------------------------------
@@ -158,11 +151,10 @@ extern void	   notifyCVChange( uint16_t CV, uint8_t Value) {
 //------------------------------------------------------------------
 void notifyCVAck(void)
 {
-  //Serial.println("notifyCVAck");
   digitalWrite(PIN_F0_F,ON);
   digitalWrite(PIN_F0_R,ON);
   digitalWrite(PIN_AUX1,ON);
-  digitalWrite(PIN_AUX2,ON);
+  digitalWrite(PIN_AUX2,OFF);
 
   delay( 6 );
 
@@ -177,8 +169,6 @@ void notifyCVAck(void)
 //------------------------------------------------------------------
 void setup()
 {
-//TCCR1 = 0<<CTC1 | 0<<PWM1A | 0<<COM1A0 | 1<<CS10;
-  
   pinMode(PIN_F0_F, OUTPUT);
   digitalWrite(PIN_F0_F, OFF);
   pinMode(PIN_F0_R, OUTPUT);
@@ -206,9 +196,6 @@ void loop() {
     //Headlight control
     HeadLight_Control();
 
-    //Motor drive control
-    //Motor_Control();
-
     //Reset task
     gPreviousL5 = millis();
   }
@@ -217,6 +204,8 @@ void loop() {
 
 //---------------------------------------------------------------------
 // HeadLight control Task (10Hz:100ms)
+//
+// 2021/8/18 急行灯の処理を全体処理に変更
 //---------------------------------------------------------------------
 void HeadLight_Control()
 {
@@ -232,6 +221,19 @@ void HeadLight_Control()
   } else {
     lDir = gDirection;
   }
+
+  //---------------------------------------------------------------------
+  // 急行灯の処理
+  // 前進 and F1 で　On/Off
+  // 後進で Off
+  //--------------------------------------------------------------------- 
+  if(gState_F1 == 0 || lDir == 0){    // F0=off or 後進 で急行灯off
+    digitalWrite(PIN_AUX1, OFF);
+  } else {                            // 前進時 急行灯On
+    if( lDir == 1 ){
+      digitalWrite(PIN_AUX1, ON);
+    }
+  }
   
   //---------------------------------------------------------------------
   // ヘッド・テールライトコントロール
@@ -239,7 +241,7 @@ void HeadLight_Control()
   // F0 で　On/Off
   //--------------------------------------------------------------------- 
   if((gCV49_fx >= 2) && (gCV49_fx <= 13)) {
-    FXeffect_Control();
+    FXeffect_Control( lDir );
   }
 
   //---------------------------------------------------------------------
@@ -252,7 +254,7 @@ void HeadLight_Control()
       analogWrite(PIN_F0_F,0);
       digitalWrite(PIN_F0_R, OFF);      // 消灯
     } else {                            // DCC F0=ON コマンドの処理
-      if( lDir == 0){             // Reverse 後進(DCS50Kで確認)
+      if( lDir == 0 ){             // Reverse 後進(DCS50Kで確認)
         digitalWrite(PIN_F0_R, ON);   // 点灯
         analogWrite(PIN_F0_F,0);          // O2:analog out (hedd light)   
       } else {                          // Forward 前進(DCS50Kで確認)
@@ -265,6 +267,13 @@ void HeadLight_Control()
         analogWrite(PIN_F0_F,aPwmRef);
       }
     }
+//    if(gState_F1 == 0 || lDir == 0){    // F0=off or 後進 で急行灯off
+//      digitalWrite(PIN_AUX1, OFF);
+//    } else {                            // 前進時 急行灯On
+//      if( lDir == 1 ){
+//        digitalWrite(PIN_AUX1, ON);
+//      }
+//    }
   }
 
   //---------------------------------------------------------------------
@@ -309,13 +318,13 @@ void HeadLight_Control()
 #endif
 
 // F3 受信時の処理
-//#if 0
+#if 0
   if(gState_F3 == 0){
     digitalWrite(PIN_AUX1, OFF);
   } else {
     digitalWrite(PIN_AUX1, ON);
   }
-//#endif
+#endif
 
 // F4 受信時の処理
 #if 0
@@ -327,11 +336,13 @@ void HeadLight_Control()
 #endif
 
 // F5 受信時の処理
+#if 0
   if(gState_F5 == 0){
     analogWrite(PIN_AUX2, 0);
   } else {
     analogWrite(PIN_AUX2,128);//gCV53_RoomDimming);
   }
+#endif
 }
 
 
@@ -372,8 +383,11 @@ extern void notifyDccSpeed( uint16_t Addr, DCC_ADDR_TYPE AddrType, uint8_t Speed
 // FX効果ステートマシン
 // 10ms周期で起動
 // unsigned chart ptn[4][5]{{'I',0,0,1},{'S',20,255,1},{'S',40,0,1},{'E',0,0,1}};
+//
+// 2021/8/18 gState_F0 = 0 の時、PIN_F0_R をOFFにする処理追加
+//           lDir フラグによる前進/後進処理追加
 //---------------------------------------------------------------------
-void FXeffect_Control(){
+void FXeffect_Control(uint8_t dir){
   enum{
     ST_IDLE = 0,
     ST_CMDPRO,
@@ -389,12 +403,20 @@ void FXeffect_Control(){
 
 
   if(gState_F0 == 0){ // F0 OFF
-    state = 0; 
+    state = ST_IDLE;
     adr = 0;
     timeUp = 0;
     pwmRef = 0;
     digitalWrite(PIN_F0_F, 0);
+    digitalWrite(PIN_F0_R, OFF);      // 消灯
+    return;
   }
+  
+  if( dir == 0 ){                   // Reverse 後進(DCS50Kで確認)
+    analogWrite(PIN_F0_F,0);        // O2:analog out (hedd light)        
+    digitalWrite(PIN_F0_R, ON);     // 点灯
+    state = ST_IDLE;
+   } else {                          // dir=1 の処理ここから
 
   S00:  
   switch(state){
@@ -404,6 +426,7 @@ void FXeffect_Control(){
         timeUp = 0;
         pwmRef = 0;
         analogWrite(PIN_F0_F, 0);
+        digitalWrite(PIN_F0_R, OFF);  // テールライト消灯
         state = ST_CMDPRO;
         goto S00;     // 100ms待たずに再度ステートマシーンに掛ける
       }
@@ -456,7 +479,9 @@ void FXeffect_Control(){
 
       default:
       break;
-  }
+    }
+    
+  }                             // dir=1 の処理ここまで
 }
 
 //---------------------------------------------------------------------------
@@ -548,6 +573,15 @@ void Dccinit(void)
   //Init CVs
   gCV1_SAddr = Dcc.getCV( CV_MULTIFUNCTION_PRIMARY_ADDRESS ) ;
   gCVx_LAddr = (Dcc.getCV( CV_MULTIFUNCTION_EXTENDED_ADDRESS_MSB ) << 8) + Dcc.getCV( CV_MULTIFUNCTION_EXTENDED_ADDRESS_LSB );
+
+  gCV29_Vstart = Dcc.getCV( CV_29_CONFIG ) ;
+  
+    //cv29 Direction Check
+  if ( (gCV29_Vstart & 0x01) > 0){
+    gCV29Direction = 1;//REVをFWDにする
+  } else {
+    gCV29Direction = 0;//FWDをFWDにする
+  }
 
   gCV49_fx = Dcc.getCV( CV_49_F0_FORWARD_LIGHT );
   switch(gCV49_fx){

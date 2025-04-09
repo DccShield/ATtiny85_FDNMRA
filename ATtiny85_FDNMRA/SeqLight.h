@@ -1,7 +1,7 @@
 //--------------------------------------------------------------------------------
 // あらかじめ設定された点灯条件を再生するスケッチ
 // [SeqLight.h]
-// Copyright (c) 2025 Ayanosuke(Maison de DCC)
+// Copyright (c) 2020 Ayanosuke(Maison de DCC)
 // https://desktopstation.net/bb/index.php
 //
 // This software is released under the MIT License.
@@ -102,6 +102,7 @@ unsigned char ptn12[8][3]={
                           {'O', 6,255},
                           {'O',63,  0},
                           {'L',  0,  0}}; //トリプルフラッシュ
+
 
 unsigned char ptn13[14][3]={
                           {'I',  0,  0},
